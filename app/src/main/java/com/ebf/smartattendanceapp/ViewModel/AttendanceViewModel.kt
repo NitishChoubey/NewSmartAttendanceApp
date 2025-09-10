@@ -84,42 +84,25 @@ class AttendanceViewModel(
 
     // ---------------- QR Handling ----------------
 
-    fun onQrScanned(qrValue: String?) {
-        Log.d(TAG, "onQrScanned() currentState=${_state.value} raw=${qrValue?.take(200)}")
-
-        if (qrValue.isNullOrBlank()) {
-            Log.w(TAG, "QR empty → ignoring")
-            return
-        }
-
-        // Parse sessionId from JSON / prefix / URL
-        val sessionId = QrParser.extractSessionId(qrValue)
+    fun onQrScanned(raw: String?) {
+        // Strict gate: only accept while SCANNING
+        if (_state.value != AttendanceState.SCANNING) return
+        val sessionId = QrParser.extractSessionId(raw)
         if (sessionId.isNullOrBlank()) {
-            Log.w(TAG, "No sessionId found in QR → keep scanning")
+            Log.w("AttendanceVM", "Invalid QR payload: $raw")
+            _state.value = AttendanceState.FAILURE
             return
         }
 
-        val rollNo = AppSession.studentId.trim()
-        if (rollNo.isBlank()) {
-            Log.e(TAG, "Missing rollNo in AppSession → set it at login")
-            return
-        }
-
-        // Pause analyzer while we talk to backend
         _state.value = AttendanceState.SAVING_TO_DB
-        Log.d(TAG, "POST attendance roll=$rollNo session=$sessionId")
-
         viewModelScope.launch {
-            when (val res = repo.markAttendance(sessionId)) {
+            when (val resp = repo.markAttendance(sessionId)) {
                 is NetResult.Ok -> {
-                    Log.d(TAG, "Attendance marked OK")
-                    _state.value = AttendanceState.SUCCESS
+                    _state.value = AttendanceState.SUCCESS   // stay green; no auto-revert
                 }
                 is NetResult.Err -> {
-                    Log.w(TAG, "markAttendance error: ${res.message}")
-                    _state.value = AttendanceState.FAILURE
-                    delay(1500) // brief message, then allow re-scan
-                    _state.value = AttendanceState.SCANNING
+                    Log.w("AttendanceVM", "markAttendance error: ${resp.message}")
+                    _state.value = AttendanceState.FAILURE   // user can back and retry
                 }
             }
         }

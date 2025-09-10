@@ -99,28 +99,17 @@ fun AttendanceScreen(
     Box(modifier = Modifier.fillMaxSize().background(Color.Black)) {
         when {
             permissionsState.allPermissionsGranted -> {
-                // Keep camera mounted; analyzer runs only when SCANNING or SAVING_TO_DB
-                CameraView(
-                    isScanningActive = (state == AttendanceState.SCANNING || state == AttendanceState.SAVING_TO_DB),
-                    onQrScanned = { code ->
-                        Log.d(TAG, "onQrScanned -> ${code?.take(200)}")
-                        viewModel.onQrScanned(code)
-                    },
-                    lifecycleOwner = lifecycleOwner
-                )
-
-                // Debug label to see the current state
-                Text(
-                    text = "STATE: $state",
-                    color = Color.White,
-                    modifier = Modifier.align(Alignment.TopCenter)
-                )
-
+                if (state == AttendanceState.SCANNING) {      // <- only while scanning
+                    CameraView(
+                        isScanningActive = true,
+                        onQrScanned = { viewModel.onQrScanned(it) },
+                        lifecycleOwner = lifecycleOwner
+                    )
+                }
                 AttendanceOverlay(
                     state = state,
                     navController = navController,
                     onRetry = {
-                        Log.d(TAG, "Retry tapped")
                         navController.popBackStack()
                         navController.navigate("attendance")
                     }
