@@ -29,6 +29,8 @@ import com.ebf.smartattendanceapp.Indicators.SuccessIndicator
 import com.ebf.smartattendanceapp.R
 import com.ebf.smartattendanceapp.ViewModel.AttendanceState
 
+
+
 @Composable
 fun AttendanceOverlay(state: AttendanceState, navController: NavController, onRetry: () -> Unit) {
     val overlayColor = when (state) {
@@ -48,14 +50,16 @@ fun AttendanceOverlay(state: AttendanceState, navController: NavController, onRe
         ) { targetState ->
             Column(horizontalAlignment = Alignment.CenterHorizontally, verticalArrangement = Arrangement.Center) {
                 when (targetState) {
-                    AttendanceState.LISTENING_FOR_AUDIO -> StatusIndicator(iconId = R.drawable.ic_mic, text = "Listening for classroom audio...\nHold phone steady.")
-                    AttendanceState.AUTHENTICATING -> StatusIndicator(iconId = R.drawable.ic_fingerprint, text = "Biometric Identity Check\nPlease verify it's you.")
+                    AttendanceState.LISTENING_FOR_AUDIO -> StatusIndicator(iconId = R.drawable.ic_mic, text = "Classroom ko sun rha hai...\nPhone ko sthir rakhein.")
+                    AttendanceState.AUTHENTICATING -> StatusIndicator(iconId = R.drawable.ic_fingerprint, text = "Biometric Identity Check\nKripya verify karein.")
                     AttendanceState.SCANNING -> {
                         Box(contentAlignment = Alignment.Center) {
-                            VisualCryptographyOverlay()
-                            StatusIndicator(iconId = R.drawable.ic_qr_code_scanner, text = "Verified!\nPoint camera at the screen.")
+                            ScanningFrame()
+                            StatusIndicator(iconId = R.drawable.ic_qr_code_scanner, text = "Verified!\nScreen par QR code scan karein.")
                         }
                     }
+                    // ✅ NEW UI STATE
+                    AttendanceState.SAVING_TO_DB -> StatusIndicator(iconId = R.drawable.ic_qr_code_scanner, text = "Saving Attendance to Database...")
                     AttendanceState.SUCCESS -> SuccessIndicator(navController)
                     AttendanceState.FAILURE -> FailureIndicator(onRetry)
                     else -> {}
@@ -63,7 +67,7 @@ fun AttendanceOverlay(state: AttendanceState, navController: NavController, onRe
             }
         }
         IconButton(onClick = { navController.popBackStack() }, modifier = Modifier.align(Alignment.TopStart)) {
-            Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = "Back", tint = Color.White)
+            Icon(Icons.Default.ArrowBack, contentDescription = "Back", tint = Color.White)
         }
     }
 }

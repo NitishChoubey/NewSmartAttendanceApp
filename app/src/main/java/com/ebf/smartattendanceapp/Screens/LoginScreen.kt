@@ -40,7 +40,7 @@ import androidx.compose.ui.text.input.PasswordVisualTransformation
 
 @Composable
 fun LoginScreen(navController: NavController) {
-    var studentId by remember { mutableStateOf("12345") }
+    var studentId by remember { mutableStateOf("") }
     var pin by remember { mutableStateOf("1234") }
     var isLoading by remember { mutableStateOf(false) }
     var error by remember { mutableStateOf<String?>(null) }
@@ -71,17 +71,15 @@ fun LoginScreen(navController: NavController) {
             } else {
                 Button(
                     onClick = {
-                        scope.launch {
-                            isLoading = true
-                            error = null
-                            delay(1500) // Simulate network call
-                            if (studentId == "12345" && pin == "1234") {
-                                navController.navigate("dashboard") { popUpTo("login") { inclusive = true } }
-                            } else {
-                                error = "Invalid Student ID or PIN."
-                            }
-                            isLoading = false
+                        // inside onClick launch block, after successful check:
+                        if (studentId == studentId && pin == "1234") {
+                            com.ebf.smartattendanceapp.session.AppSession.studentId = studentId
+                            // if you have JWT later: AppSession.jwt = <token>
+                            navController.navigate("dashboard") { popUpTo("login") { inclusive = true } }
+                        } else {
+                            error = "Invalid Student ID or PIN."
                         }
+
                     },
                     modifier = Modifier.fillMaxWidth().height(50.dp),
                     shape = RoundedCornerShape(12.dp)

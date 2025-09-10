@@ -30,6 +30,8 @@ import androidx.navigation.NavController
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun DashboardScreen(navController: NavController) {
+
+    val roll = com.ebf.smartattendanceapp.session.AppSession.studentId.ifBlank { "—" }
     Scaffold(
         topBar = { TopAppBar(title = { Text("Dashboard") }, colors = TopAppBarDefaults.topAppBarColors(containerColor = MaterialTheme.colorScheme.primary, titleContentColor = MaterialTheme.colorScheme.onPrimary)) }
     ) { paddingValues ->
@@ -41,7 +43,7 @@ fun DashboardScreen(navController: NavController) {
             Card(modifier = Modifier.fillMaxWidth(), elevation = CardDefaults.cardElevation(4.dp)) {
                 Column(Modifier.padding(16.dp)) {
                     Text("Welcome, Student!", style = MaterialTheme.typography.titleLarge)
-                    Text("ID: 12345", style = MaterialTheme.typography.bodyMedium, color = Color.Gray)
+                    Text("ID: $roll", style = MaterialTheme.typography.bodyMedium, color = Color.Gray)
                 }
             }
             Spacer(Modifier.height(24.dp))
