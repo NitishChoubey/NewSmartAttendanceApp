@@ -7,8 +7,8 @@ import com.ebf.smartattendanceapp.UltrasonicDetector.UltrasonicDetector
 import com.ebf.smartattendanceapp.data.AttendanceRepository
 import com.ebf.smartattendanceapp.data.NetResult
 import com.ebf.smartattendanceapp.data.net.RetrofitProvider
-import com.ebf.smartattendanceapp.session.AppSession
 import com.ebf.smartattendanceapp.qr.QrParser
+import com.ebf.smartattendanceapp.session.AppSession
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.delay
@@ -19,6 +19,7 @@ import kotlinx.coroutines.isActive
 import kotlinx.coroutines.launch
 
 class AttendanceViewModel(
+    // Default wiring to Retrofit + your saved studentId
     private val repo: AttendanceRepository = AttendanceRepository(
         api = RetrofitProvider.attendanceApi,
         studentIdProvider = { AppSession.studentId }
@@ -33,8 +34,11 @@ class AttendanceViewModel(
     private val ultrasonicDetector = UltrasonicDetector()
     private var listeningJob: Job? = null
 
+    // ---------------- Permissions → Ultrasonic ----------------
+
     fun onPermissionsGranted() {
         if (_state.value == AttendanceState.REQUESTING_PERMISSIONS) {
+            Log.d(TAG, "Permissions granted → LISTENING_FOR_AUDIO")
             _state.value = AttendanceState.LISTENING_FOR_AUDIO
             startListeningForUltrasonicSound()
         }
@@ -43,12 +47,14 @@ class AttendanceViewModel(
     private fun startListeningForUltrasonicSound() {
         stopListening()
         listeningJob = viewModelScope.launch(Dispatchers.IO) {
+            Log.d(TAG, "Ultrasonic listening started")
             ultrasonicDetector.startListening()
             ultrasonicDetector.isHearingUltrasonic.collect { isHearing ->
                 if (isHearing && isActive) {
+                    Log.d(TAG, "Ultrasonic detected → AUTHENTICATING")
                     launch(Dispatchers.Main) {
-                        _state.update { current ->
-                            if (current == AttendanceState.LISTENING_FOR_AUDIO) AttendanceState.AUTHENTICATING else current
+                        _state.update { cur ->
+                            if (cur == AttendanceState.LISTENING_FOR_AUDIO) AttendanceState.AUTHENTICATING else cur
                         }
                         stopListening()
                     }
@@ -60,10 +66,13 @@ class AttendanceViewModel(
     fun stopListening() {
         listeningJob?.cancel()
         ultrasonicDetector.stopListening()
+        Log.d(TAG, "Ultrasonic listening stopped")
     }
 
+    // ---------------- Biometric ----------------
+
     fun onBiometricSuccess() {
-        Log.d(TAG, "Biometric success -> SCANNING")
+        Log.d(TAG, "Biometric success → SCANNING")
         _state.value = AttendanceState.SCANNING
     }
 
@@ -73,45 +82,43 @@ class AttendanceViewModel(
         stopListening()
     }
 
+    // ---------------- QR Handling ----------------
+
     fun onQrScanned(qrValue: String?) {
-        Log.d(TAG, "onQrScanned() state=${_state.value} qr='${qrValue?.take(200)}'")
-        if (_state.value != AttendanceState.SCANNING) {
-            Log.w(TAG, "Ignoring QR because not in SCANNING state")
+        Log.d(TAG, "onQrScanned() currentState=${_state.value} raw=${qrValue?.take(200)}")
+
+        if (qrValue.isNullOrBlank()) {
+            Log.w(TAG, "QR empty → ignoring")
+            return
+        }
+
+        // Parse sessionId from JSON / prefix / URL
+        val sessionId = QrParser.extractSessionId(qrValue)
+        if (sessionId.isNullOrBlank()) {
+            Log.w(TAG, "No sessionId found in QR → keep scanning")
             return
         }
 
         val rollNo = AppSession.studentId.trim()
         if (rollNo.isBlank()) {
-            Log.e(TAG, "rollNo missing in AppSession; cannot post to backend")
-            _state.value = AttendanceState.FAILURE
-            _state.value = AttendanceState.SCANNING
+            Log.e(TAG, "Missing rollNo in AppSession → set it at login")
             return
         }
 
-        // Extract sessionId (JSON or prefix or url) using your QrParser
-        val sessionId = QrParser.extractSessionId(qrValue)
-        if (sessionId.isNullOrBlank()) {
-            Log.w(TAG, "Invalid QR payload, sessionId not found")
-            _state.value = AttendanceState.FAILURE
-            _state.value = AttendanceState.SCANNING
-            return
-        }
-
-        // Pause scanning and call backend
+        // Pause analyzer while we talk to backend
         _state.value = AttendanceState.SAVING_TO_DB
-        Log.d(TAG, "Posting attendance: roll=$rollNo session=$sessionId")
+        Log.d(TAG, "POST attendance roll=$rollNo session=$sessionId")
 
         viewModelScope.launch {
-            when (val r = repo.markAttendance(sessionId)) {
+            when (val res = repo.markAttendance(sessionId)) {
                 is NetResult.Ok -> {
-                    Log.d(TAG, "Attendance marked successfully")
+                    Log.d(TAG, "Attendance marked OK")
                     _state.value = AttendanceState.SUCCESS
                 }
                 is NetResult.Err -> {
-                    Log.w(TAG, "markAttendance error: ${r.message}")
-                    // show failure briefly then return to scanning
+                    Log.w(TAG, "markAttendance error: ${res.message}")
                     _state.value = AttendanceState.FAILURE
-                    delay(1500)
+                    delay(1500) // brief message, then allow re-scan
                     _state.value = AttendanceState.SCANNING
                 }
             }
@@ -119,6 +126,7 @@ class AttendanceViewModel(
     }
 
     fun resetState() {
+        Log.d(TAG, "resetState() → REQUESTING_PERMISSIONS")
         _state.value = AttendanceState.REQUESTING_PERMISSIONS
     }
 

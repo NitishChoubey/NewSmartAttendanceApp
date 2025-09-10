@@ -18,6 +18,7 @@ import com.google.mlkit.vision.barcode.BarcodeScannerOptions
 import com.google.mlkit.vision.barcode.BarcodeScanning
 import com.google.mlkit.vision.common.InputImage
 import java.util.concurrent.Executors
+import java.util.concurrent.atomic.AtomicBoolean
 
 private const val TAG = "CameraView"
 
@@ -33,6 +34,9 @@ fun CameraView(
     val onQrScannedState = rememberUpdatedState(onQrScanned)
     val isActiveState = rememberUpdatedState(isScanningActive)
 
+    // Prevent duplicate callbacks per detection burst
+    val firedOnce = remember { AtomicBoolean(false) }
+
     AndroidView(
         modifier = Modifier.fillMaxSize(),
         factory = { ctx ->
@@ -42,7 +46,6 @@ fun CameraView(
 
             val cameraProvider = cameraProviderFuture.get()
 
-            // ✅ SAFE ROTATION (avoid NPE)
             val safeRotation = try {
                 previewView.display?.rotation ?: Surface.ROTATION_0
             } catch (t: Throwable) {
@@ -54,41 +57,48 @@ fun CameraView(
                 .build()
                 .also { it.setSurfaceProvider(previewView.surfaceProvider) }
 
-
             val options = BarcodeScannerOptions.Builder()
                 .setBarcodeFormats(com.google.mlkit.vision.barcode.common.Barcode.FORMAT_QR_CODE)
                 .build()
             val scanner = BarcodeScanning.getClient(options)
 
-            val imageAnalysis = ImageAnalysis.Builder()
+            val analysis = ImageAnalysis.Builder()
                 .setBackpressureStrategy(ImageAnalysis.STRATEGY_KEEP_ONLY_LATEST)
                 .setOutputImageFormat(ImageAnalysis.OUTPUT_IMAGE_FORMAT_YUV_420_888)
                 .build()
 
-            var frameCount = 0
+            var frames = 0
 
             @SuppressLint("UnsafeOptInUsageError")
-            imageAnalysis.setAnalyzer(cameraExecutor) { imageProxy ->
-                frameCount++
-                if (frameCount % 50 == 0) Log.d(TAG, "frameCount=$frameCount isActive=${isActiveState.value}")
+            analysis.setAnalyzer(cameraExecutor) { imageProxy ->
+                frames++
+                if (frames % 50 == 0) Log.d(TAG, "frames=$frames isActive=${isActiveState.value}")
 
                 val mediaImage = imageProxy.image
                 if (mediaImage == null) {
                     imageProxy.close(); return@setAnalyzer
                 }
+
                 if (!isActiveState.value) {
+                    // Drain frames while paused
+                    if (frames % 50 == 0) Log.d(TAG, "paused → draining frames")
+                    firedOnce.set(false) // allow next detection when resumed
                     imageProxy.close(); return@setAnalyzer
                 }
 
-                val rotationDegrees = imageProxy.imageInfo.rotationDegrees
-                val image = InputImage.fromMediaImage(mediaImage, rotationDegrees)
+                val image = InputImage.fromMediaImage(mediaImage, imageProxy.imageInfo.rotationDegrees)
 
                 scanner.process(image)
                     .addOnSuccessListener { barcodes ->
-                        val code = barcodes.firstOrNull()?.rawValue
-                        if (!code.isNullOrBlank()) {
-                            Log.d(TAG, "QR detected: ${code.take(120)}")
-                            onQrScannedState.value(code)
+                        val value = barcodes.firstOrNull()?.rawValue
+                        if (!value.isNullOrBlank()) {
+                            if (firedOnce.compareAndSet(false, true)) {
+                                Log.d(TAG, "QR detected: ${value.take(200)}")
+                                onQrScannedState.value(value)
+                            } else {
+                                // Already fired for this burst; ignore until paused/resumed
+                                Log.d(TAG, "QR already fired; ignoring duplicate")
+                            }
                         }
                     }
                     .addOnFailureListener { e ->
@@ -105,7 +115,7 @@ fun CameraView(
                     lifecycleOwner,
                     CameraSelector.DEFAULT_BACK_CAMERA,
                     preview,
-                    imageAnalysis
+                    analysis
                 )
                 Log.d(TAG, "Camera bound (rotation=$safeRotation)")
             } catch (e: Exception) {
@@ -113,6 +123,13 @@ fun CameraView(
             }
 
             previewView
+        },
+        update = {
+            Log.d(TAG, "Recompose: isScanningActive=$isScanningActive")
+            if (!isScanningActive) {
+                // Allow next detection when scanning resumes
+                firedOnce.set(false)
+            }
         }
     )
 }
