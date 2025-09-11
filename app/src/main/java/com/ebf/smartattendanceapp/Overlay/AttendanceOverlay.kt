@@ -50,12 +50,12 @@ fun AttendanceOverlay(state: AttendanceState, navController: NavController, onRe
         ) { targetState ->
             Column(horizontalAlignment = Alignment.CenterHorizontally, verticalArrangement = Arrangement.Center) {
                 when (targetState) {
-                    AttendanceState.LISTENING_FOR_AUDIO -> StatusIndicator(iconId = R.drawable.ic_mic, text = "Classroom ko sun rha hai...\nPhone ko sthir rakhein.")
-                    AttendanceState.AUTHENTICATING -> StatusIndicator(iconId = R.drawable.ic_fingerprint, text = "Biometric Identity Check\nKripya verify karein.")
+                    AttendanceState.LISTENING_FOR_AUDIO -> StatusIndicator(iconId = R.drawable.ic_mic, text = "Listening for Classroom Audio...\nHold  phone steady.")
+                    AttendanceState.AUTHENTICATING -> StatusIndicator(iconId = R.drawable.ic_fingerprint, text = "Biometric Identity Check\nPlease verify your identity.")
                     AttendanceState.SCANNING -> {
                         Box(contentAlignment = Alignment.Center) {
                             ScanningFrame()
-                            StatusIndicator(iconId = R.drawable.ic_qr_code_scanner, text = "Verified!\nScreen par QR code scan karein.")
+                            StatusIndicator(iconId = R.drawable.ic_qr_code_scanner, text = "Scan the QR code on the screen." )
                         }
                     }
                     // ✅ NEW UI STATE
